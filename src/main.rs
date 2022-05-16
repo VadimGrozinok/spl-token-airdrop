@@ -195,10 +195,6 @@ async fn mint(
     channel: Sender<HashMap<String, MintTxInfo>>,
     sleep: u64,
 ) {
-    let sleep_time = time::Duration::from_millis(sleep);
-
-    thread::sleep(sleep_time);
-
     let timeout = Duration::from_secs(10000000);
     let rpc_client = RpcClient::new_with_timeout(&url, timeout);
 
@@ -224,41 +220,63 @@ async fn mint(
         .unwrap(),
     ];
 
-    let blockhash = get_blockhash(&rpc_client).await.unwrap();
+    let mut attempts = 5;
+    let mut sleep_time = time::Duration::from_millis(sleep);
 
-    let tx = Transaction::new_signed_with_payer(
-        &instructions,
-        Some(&payer.pubkey()),
-        &[&payer],
-        blockhash,
-    );
+    while attempts > 0 {
+        attempts -= 1;
 
-    let result = rpc_client.send_and_confirm_transaction(&tx);
+        let blockhash = get_blockhash(&rpc_client).await;
 
-    if let Ok(signature) = result {
-        let mut tx_info: HashMap<String, MintTxInfo> = HashMap::new();
-
-        tx_info.insert(
-            wallet.to_string(),
-            MintTxInfo {
-                signature: Some(signature.to_string()),
-                status: true,
-            },
-        );
-
-        channel.send(tx_info).unwrap();
-    } else {
-        let mut tx_info: HashMap<String, MintTxInfo> = HashMap::new();
-
-        tx_info.insert(
-            wallet.to_string(),
-            MintTxInfo {
-                signature: None,
-                status: false,
-            },
-        );
-
-        channel.send(tx_info).unwrap();
+        if let Some(blockhash) = blockhash {
+            let tx = Transaction::new_signed_with_payer(
+                &instructions,
+                Some(&payer.pubkey()),
+                &[&payer],
+                blockhash,
+            );
+    
+            let result = rpc_client.send_and_confirm_transaction(&tx);
+    
+            if let Ok(signature) = result {
+                let mut tx_info: HashMap<String, MintTxInfo> = HashMap::new();
+    
+                tx_info.insert(
+                    wallet.to_string(),
+                    MintTxInfo {
+                        signature: Some(signature.to_string()),
+                        status: true,
+                    },
+                );
+    
+                channel.send(tx_info).unwrap();
+    
+                break;
+            } else {
+                if attempts == 0 {
+                    let mut tx_info: HashMap<String, MintTxInfo> = HashMap::new();
+    
+                    tx_info.insert(
+                        wallet.to_string(),
+                        MintTxInfo {
+                            signature: None,
+                            status: false,
+                        },
+                    );
+    
+                    channel.send(tx_info).unwrap();
+                    break;
+                }
+    
+                thread::sleep(sleep_time);
+    
+                sleep_time += sleep_time;
+            }
+        } else {
+            thread::sleep(sleep_time);
+    
+            sleep_time += sleep_time;
+        }
     }
 }
 

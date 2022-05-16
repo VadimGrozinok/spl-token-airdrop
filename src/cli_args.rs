@@ -39,7 +39,7 @@ pub enum Commands {
         #[clap(long, value_name = "FILE")]
         holders_list: String,
         /// If set to true CLI will mint one SPL token to user wallet and doesn't matter how many tokens from collection he has
-        #[clap(long, value_name = "BOOL")]
+        #[clap(long)]
         one_to_wallet: bool,
     },
     ///
